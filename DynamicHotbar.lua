@@ -9,13 +9,14 @@
 -- * Startup settings window: "Enable extended inventory" + toggle.
 -- * Window is draggable on mouse/touch.
 -- * X collapses the window to a square; tapping the square restores it.
--- * Author credit: by GDplay/by kitzkuro
+-- * Author credit: by kitzkuro
 --
 -- This is intended for a Roblox Studio experience you control.
 
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -57,14 +58,29 @@ local function stroke(parent, thickness, color, transparency)
 	return s
 end
 
-local function makeDraggable(frame, handle)
+local function makeSmoothDraggable(frame, handle)
 	local dragging = false
 	local dragStart
 	local startPos
+	local tween
 
-	local function begin(input)
+	local function tweenTo(position)
+		if tween then
+			tween:Cancel()
+		end
+
+		tween = TweenService:Create(
+			frame,
+			TweenInfo.new(0.12, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+			{Position = position}
+		)
+		tween:Play()
+	end
+
+	handle.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
+
 			dragging = true
 			dragStart = input.Position
 			startPos = frame.Position
@@ -79,9 +95,9 @@ local function makeDraggable(frame, handle)
 				end
 			end)
 		end
-	end
+	end)
 
-	local function move(input)
+	UserInputService.InputChanged:Connect(function(input)
 		if not dragging then
 			return
 		end
@@ -93,16 +109,13 @@ local function makeDraggable(frame, handle)
 
 		local delta = input.Position - dragStart
 
-		frame.Position = UDim2.new(
+		tweenTo(UDim2.new(
 			startPos.X.Scale,
 			startPos.X.Offset + delta.X,
 			startPos.Y.Scale,
 			startPos.Y.Offset + delta.Y
-		)
-	end
-
-	handle.InputBegan:Connect(begin)
-	UserInputService.InputChanged:Connect(move)
+		))
+	end)
 end
 
 -- =========================
@@ -113,7 +126,7 @@ local settings = Instance.new("Frame")
 settings.Name = "Settings"
 settings.AnchorPoint = Vector2.new(0.5, 0.5)
 settings.Position = UDim2.new(0.5, 0, 0.5, 0)
-settings.Size = UDim2.new(0, 340, 0, 145)
+settings.Size = UDim2.new(0, 350, 0, 150)
 settings.BackgroundColor3 = Color3.fromRGB(24, 25, 30)
 settings.BorderSizePixel = 0
 settings.Parent = gui
@@ -179,7 +192,7 @@ local credit = Instance.new("TextLabel")
 credit.BackgroundTransparency = 1
 credit.Position = UDim2.new(0, 16, 1, -31)
 credit.Size = UDim2.new(1, -32, 0, 20)
-credit.Text = "by GDplay/by kitzkuro"
+credit.Text = "by kitzkuro"
 credit.TextColor3 = Color3.fromRGB(135, 140, 155)
 credit.TextSize = 12
 credit.Font = Enum.Font.Gotham
@@ -203,18 +216,99 @@ collapsed.Parent = gui
 corner(collapsed, 12)
 stroke(collapsed, 1.5, Color3.fromRGB(70, 75, 90), 0)
 
-makeDraggable(settings, header)
+makeSmoothDraggable(collapsed, collapsed)
+
+makeSmoothDraggable(settings, header)
+
+local settingsOpenSize = settings.Size
+local settingsOpenPosition = settings.Position
+local collapsedSize = collapsed.Size
+
+local fadeObjects = {
+	header, close, title, toggle, credit
+}
+
+local function setGroupTransparency(value)
+	for _, object in ipairs(fadeObjects) do
+		if object:IsA("TextLabel") or object:IsA("TextButton") then
+			object.TextTransparency = value
+		end
+	end
+
+	toggle.BackgroundTransparency = math.clamp(value, 0, 0.9)
+	knob.BackgroundTransparency = math.clamp(value, 0, 0.9)
+end
 
 local function collapse()
+	if not settings.Visible then
+		return
+	end
+
 	collapsed.Position = settings.Position
-	settings.Visible = false
 	collapsed.Visible = true
+	collapsed.Size = UDim2.new(0, 10, 0, 10)
+	collapsed.BackgroundTransparency = 1
+	collapsed.TextTransparency = 1
+
+	local outInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+	local fadeInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+	TweenService:Create(settings, outInfo, {
+		Size = UDim2.new(0, 70, 0, 70),
+		BackgroundTransparency = 1
+	}):Play()
+
+	TweenService:Create(collapsed, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = collapsedSize,
+		BackgroundTransparency = 0,
+		TextTransparency = 0
+	}):Play()
+
+	TweenService:Create(settings, fadeInfo, {
+		BackgroundTransparency = 1
+	}):Play()
+
+	setGroupTransparency(1)
+
+	task.delay(0.30, function()
+		settings.Visible = false
+		settings.Size = settingsOpenSize
+		settings.BackgroundTransparency = 0
+		setGroupTransparency(0)
+	end)
 end
 
 local function expand()
+	if settings.Visible then
+		return
+	end
+
 	settings.Position = collapsed.Position
-	collapsed.Visible = false
 	settings.Visible = true
+	settings.Size = UDim2.new(0, 70, 0, 70)
+	settings.BackgroundTransparency = 1
+	setGroupTransparency(1)
+
+	collapsed.Visible = false
+
+	TweenService:Create(settings, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = settingsOpenSize,
+		BackgroundTransparency = 0
+	}):Play()
+
+	local dummy = Instance.new("NumberValue")
+	dummy.Value = 1
+	dummy:GetPropertyChangedSignal("Value"):Connect(function()
+		setGroupTransparency(dummy.Value)
+	end)
+
+	TweenService:Create(dummy, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Value = 0
+	}):Play()
+
+	task.delay(0.28, function()
+		dummy:Destroy()
+	end)
 end
 
 close.Activated:Connect(collapse)
@@ -228,7 +322,7 @@ local bar = Instance.new("Frame")
 bar.Name = "Hotbar"
 bar.AnchorPoint = Vector2.new(0.5, 1)
 bar.Position = UDim2.new(0.5, 0, 0.985, 0)
-bar.Size = UDim2.new(0.80, 0, 0.14, 0)
+bar.Size = UDim2.new(0.72, 0, 0.16, 0)
 bar.BackgroundTransparency = 1
 bar.Visible = false
 bar.Parent = gui
@@ -238,7 +332,7 @@ list.FillDirection = Enum.FillDirection.Horizontal
 list.HorizontalAlignment = Enum.HorizontalAlignment.Center
 list.VerticalAlignment = Enum.VerticalAlignment.Center
 list.SortOrder = Enum.SortOrder.LayoutOrder
-list.Padding = UDim.new(0, 6)
+list.Padding = UDim.new(0, 4)
 list.Parent = bar
 
 -- Stable order is maintained by Tool instance, so equipping a Tool
@@ -312,7 +406,7 @@ local function updateHotbar()
 	end
 
 	local visibleCount = math.min(count, 10)
-	local width = math.min(0.17, 0.9 / visibleCount)
+	local width = math.min(0.135, 0.88 / visibleCount)
 
 	for i = 1, visibleCount do
 		local tool = tools[i]
@@ -320,9 +414,9 @@ local function updateHotbar()
 		local slot = Instance.new("ImageButton")
 		slot.Name = "Slot_" .. i
 		slot.LayoutOrder = i
-		slot.Size = UDim2.new(width, 0, 0.82, 0)
-		slot.BackgroundColor3 = Color3.fromRGB(235, 225, 185)
-		slot.BackgroundTransparency = 0.12
+		slot.Size = UDim2.new(width, 0, 0.92, 0)
+		slot.BackgroundColor3 = Color3.fromRGB(220, 210, 175)
+		slot.BackgroundTransparency = 0.18
 		slot.BorderSizePixel = 0
 		slot.AutoButtonColor = true
 		slot.Image = tool.TextureId or ""
