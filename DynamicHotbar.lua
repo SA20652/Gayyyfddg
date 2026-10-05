@@ -744,8 +744,31 @@ backpack.ChildRemoved:Connect(function(obj)
 end)
 
 local function connectCharacter(character)
+	-- A respawn can create the Character and its Tools before this callback
+	-- finishes. Do not leave the custom hotbar permanently disabled just
+	-- because the first update happened during that short transition.
 	inventoryAvailable = false
 	bar.Visible = false
+
+	local function hasInventoryTool()
+		for _, obj in ipairs(character:GetChildren()) do
+			if obj:IsA("Tool") then
+				rememberTool(obj)
+				return true
+			end
+		end
+		for _, obj in ipairs(backpack:GetChildren()) do
+			if obj:IsA("Tool") then
+				rememberTool(obj)
+				return true
+			end
+		end
+		return false
+	end
+
+	if hasInventoryTool() then
+		inventoryAvailable = true
+	end
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
@@ -783,6 +806,52 @@ local function connectCharacter(character)
 
 	task.defer(updateHotbar)
 end
+
+-- Some experiences replace the Backpack instance after death. Rebind to
+-- the new Backpack so the custom inventory can come back with it.
+local backpackConnection
+local function connectBackpack(newBackpack)
+	if not newBackpack or not newBackpack:IsA("Backpack") then
+		return
+	end
+
+	backpack = newBackpack
+	if backpackConnection then
+		backpackConnection:Disconnect()
+	end
+
+	backpackConnection = backpack.ChildAdded:Connect(function(obj)
+		if obj:IsA("Tool") then
+			rememberTool(obj)
+			inventoryAvailable = true
+			task.defer(updateHotbar)
+		end
+	end)
+
+	backpack.ChildRemoved:Connect(function(obj)
+		if obj:IsA("Tool") then
+			task.defer(updateHotbar)
+		end
+	end)
+
+	local hasTool = false
+	for _, obj in ipairs(backpack:GetChildren()) do
+		if obj:IsA("Tool") then
+			hasTool = true
+			break
+		end
+	end
+	if hasTool then
+		inventoryAvailable = true
+	end
+	task.defer(updateHotbar)
+end
+
+player.ChildAdded:Connect(function(obj)
+	if obj:IsA("Backpack") then
+		connectBackpack(obj)
+	end
+end)
 
 player.CharacterAdded:Connect(connectCharacter)
 
