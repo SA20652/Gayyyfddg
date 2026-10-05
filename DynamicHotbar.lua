@@ -17,6 +17,45 @@ local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+
+-- Persistent settings for executors that expose readfile/writefile.
+-- This is client-side storage on the current device, not Roblox DataStore.
+local SETTINGS_FILE = "DynamicHotbar_settings.json"
+local savedSettings = {}
+local canPersist = type(readfile) == "function"
+    and type(writefile) == "function"
+    and type(isfile) == "function"
+
+if canPersist then
+    pcall(function()
+        if isfile(SETTINGS_FILE) then
+            savedSettings = HttpService:JSONDecode(readfile(SETTINGS_FILE))
+            if type(savedSettings) ~= "table" then
+                savedSettings = {}
+            end
+        end
+    end)
+end
+
+local function saveSettings()
+    if not canPersist then return end
+    pcall(function()
+        writefile(SETTINGS_FILE, HttpService:JSONEncode(savedSettings))
+    end)
+end
+
+local function positionToTable(position)
+    return {position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset}
+end
+
+local function tableToPosition(value, fallback)
+    if type(value) ~= "table" or #value < 4 then return fallback end
+    for i = 1, 4 do
+        if type(value[i]) ~= "number" then return fallback end
+    end
+    return UDim2.new(value[1], value[2], value[3], value[4])
+end
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -59,7 +98,7 @@ local function stroke(parent, thickness, color, transparency)
 	return s
 end
 
-local function makeSmoothDraggable(frame, handle)
+local function makeSmoothDraggable(frame, handle, onDragEnd)
 	local dragging = false
 	local dragStart
 	local startPos
@@ -93,6 +132,7 @@ local function makeSmoothDraggable(frame, handle)
 					if connection then
 						connection:Disconnect()
 					end
+                    if onDragEnd then onDragEnd() end
 				end
 			end)
 		end
@@ -127,7 +167,7 @@ local settings = Instance.new("Frame")
 settings.Name = "Settings"
 settings.AnchorPoint = Vector2.new(0.5, 0.5)
 settings.Position = UDim2.new(0.5, 0, 0.5, 0)
-settings.Size = UDim2.new(0, 320, 0, 210)
+settings.Size = UDim2.new(0, 320, 0, 245)
 settings.BackgroundColor3 = Color3.fromRGB(24, 25, 30)
 settings.BorderSizePixel = 0
 settings.ZIndex = 100
@@ -195,6 +235,66 @@ knob.ZIndex = 102
 knob.Parent = toggle
 corner(knob, 12)
 
+-- Theme selector (available only when custom inventory is enabled)
+local themes = {
+	{
+		Name = "Default",
+		Slot = Color3.fromRGB(128, 128, 128),
+		SlotTransparency = 0.30,
+		Outline = Color3.fromRGB(70, 75, 85),
+		Selected = Color3.fromRGB(55, 205, 255),
+		Number = Color3.fromRGB(40, 40, 40),
+	},
+	{
+		Name = "Dark",
+		Slot = Color3.fromRGB(45, 48, 55),
+		SlotTransparency = 0.12,
+		Outline = Color3.fromRGB(90, 95, 110),
+		Selected = Color3.fromRGB(90, 190, 255),
+		Number = Color3.fromRGB(235, 235, 240),
+	},
+	{
+		Name = "Blue",
+		Slot = Color3.fromRGB(55, 95, 135),
+		SlotTransparency = 0.18,
+		Outline = Color3.fromRGB(90, 130, 170),
+		Selected = Color3.fromRGB(80, 220, 255),
+		Number = Color3.fromRGB(240, 248, 255),
+	},
+}
+
+local themeIndex = 1
+local themeLabel = Instance.new("TextLabel")
+themeLabel.Name = "ThemeLabel"
+themeLabel.BackgroundTransparency = 1
+themeLabel.Position = UDim2.new(0, 16, 0, 94)
+themeLabel.Size = UDim2.new(0, 110, 0, 30)
+themeLabel.Text = "Theme"
+themeLabel.TextColor3 = Color3.fromRGB(235, 235, 240)
+themeLabel.TextSize = 14
+themeLabel.Font = Enum.Font.GothamMedium
+themeLabel.TextXAlignment = Enum.TextXAlignment.Left
+themeLabel.Visible = false
+themeLabel.ZIndex = 101
+themeLabel.Parent = settings
+
+local themeButton = Instance.new("TextButton")
+themeButton.Name = "ThemeButton"
+themeButton.Size = UDim2.new(0, 125, 0, 30)
+themeButton.Position = UDim2.new(1, -141, 0, 94)
+themeButton.BackgroundColor3 = Color3.fromRGB(45, 50, 60)
+themeButton.BorderSizePixel = 0
+themeButton.Text = "Default"
+themeButton.TextColor3 = Color3.fromRGB(235, 235, 240)
+themeButton.TextSize = 13
+themeButton.Font = Enum.Font.GothamMedium
+themeButton.AutoButtonColor = false
+themeButton.Visible = false
+themeButton.ZIndex = 101
+themeButton.Parent = settings
+corner(themeButton, 7)
+
+
 local credit = Instance.new("TextLabel")
 credit.BackgroundTransparency = 1
 credit.Position = UDim2.new(0, 16, 1, -31)
@@ -206,35 +306,6 @@ credit.Font = Enum.Font.Gotham
 credit.TextXAlignment = Enum.TextXAlignment.Left
 credit.ZIndex = 101
 credit.Parent = settings
-
--- Useful recovery button: returns the settings window and collapsed button
--- to the center if they were dragged somewhere inconvenient.
-local resetPosition = Instance.new("TextButton")
-resetPosition.Name = "ResetPosition"
-resetPosition.Size = UDim2.new(0, 128, 0, 30)
-resetPosition.Position = UDim2.new(0, 176, 0, 100)
-resetPosition.BackgroundColor3 = Color3.fromRGB(45, 50, 60)
-resetPosition.BorderSizePixel = 0
-resetPosition.Text = "Reset position"
-resetPosition.TextColor3 = Color3.fromRGB(225, 230, 240)
-resetPosition.TextSize = 12
-resetPosition.Font = Enum.Font.GothamMedium
-resetPosition.AutoButtonColor = false
-resetPosition.ZIndex = 101
-resetPosition.Parent = settings
-corner(resetPosition, 7)
-
-local resetInfo = Instance.new("TextLabel")
-resetInfo.BackgroundTransparency = 1
-resetInfo.Position = UDim2.new(0, 20, 0, 100)
-resetInfo.Size = UDim2.new(0, 145, 0, 30)
-resetInfo.Text = "Window position"
-resetInfo.TextColor3 = Color3.fromRGB(180, 185, 198)
-resetInfo.TextSize = 12
-resetInfo.Font = Enum.Font.GothamMedium
-resetInfo.TextXAlignment = Enum.TextXAlignment.Left
-resetInfo.ZIndex = 101
-resetInfo.Parent = settings
 
 
 -- Collapsed square
@@ -256,22 +327,25 @@ collapsed.Parent = gui
 corner(collapsed, 12)
 stroke(collapsed, 1.5, Color3.fromRGB(70, 75, 90), 0)
 
-makeSmoothDraggable(collapsed, collapsed)
+settings.Position = tableToPosition(savedSettings.settingsPosition, settings.Position)
+collapsed.Position = tableToPosition(savedSettings.collapsedPosition, settings.Position)
 
-resetPosition.Activated:Connect(function()
-	local center = UDim2.new(0.5, 0, 0.5, 0)
-	settings.Position = center
-	collapsed.Position = center
+makeSmoothDraggable(collapsed, collapsed, function()
+    savedSettings.collapsedPosition = positionToTable(collapsed.Position)
+    saveSettings()
 end)
 
-makeSmoothDraggable(settings, header)
+makeSmoothDraggable(settings, header, function()
+    savedSettings.settingsPosition = positionToTable(settings.Position)
+    saveSettings()
+end)
 
 local settingsOpenSize = settings.Size
 local settingsOpenPosition = settings.Position
 local collapsedSize = collapsed.Size
 
 local fadeObjects = {
-	header, close, title, toggle, credit, resetPosition, resetInfo
+	header, close, title, toggle, credit, themeLabel, themeButton
 }
 
 local function setGroupTransparency(value)
@@ -289,6 +363,10 @@ local function collapse()
 	if not settings.Visible then
 		return
 	end
+    savedSettings.isCollapsed = true
+    savedSettings.settingsPosition = positionToTable(settings.Position)
+    savedSettings.collapsedPosition = positionToTable(settings.Position)
+    saveSettings()
 
 	collapsed.Position = settings.Position
 	collapsed.Visible = true
@@ -328,6 +406,9 @@ local function expand()
 	if settings.Visible then
 		return
 	end
+    savedSettings.isCollapsed = false
+    savedSettings.collapsedPosition = positionToTable(collapsed.Position)
+    saveSettings()
 
 	settings.Position = collapsed.Position
 	settings.Visible = true
@@ -458,8 +539,9 @@ local function updateHotbar()
 		slot.Name = "Slot_" .. i
 		slot.LayoutOrder = i
 		slot.Size = UDim2.new(width, 0, 0.78, 0)
-		slot.BackgroundColor3 = Color3.fromRGB(128, 128, 128)
-		slot.BackgroundTransparency = 0.30
+		local currentTheme = themes[themeIndex]
+		slot.BackgroundColor3 = currentTheme.Slot
+		slot.BackgroundTransparency = currentTheme.SlotTransparency
 		slot.BorderSizePixel = 0
 		slot.AutoButtonColor = true
 		slot.Image = tool.TextureId or ""
@@ -472,11 +554,11 @@ local function updateHotbar()
 		aspect.DominantAxis = Enum.DominantAxis.Width
 		aspect.Parent = slot
 
-		local outlineColor = Color3.fromRGB(70, 75, 85)
+		local outlineColor = currentTheme.Outline
 		local outlineWidth = 1
 
 		if tool == selectedTool then
-			outlineColor = Color3.fromRGB(55, 205, 255)
+			outlineColor = currentTheme.Selected
 			outlineWidth = 3
 		end
 
@@ -488,7 +570,7 @@ local function updateHotbar()
 		number.Position = UDim2.new(0.04, 0, 0.02, 0)
 		number.Size = UDim2.new(0.20, 0, 0.20, 0)
 		number.Text = tostring(i)
-		number.TextColor3 = Color3.fromRGB(40, 40, 40)
+		number.TextColor3 = currentTheme.Number
 		number.TextScaled = true
 		number.Font = Enum.Font.GothamBold
 		number.Parent = slot
@@ -546,30 +628,54 @@ local function setNativeBackpackEnabled(enabled)
 	end)
 end
 
+local function animateToggle(enabled)
+	local target = enabled and UDim2.new(1, -27, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+	TweenService:Create(
+		knob,
+		TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{Position = target}
+	):Play()
+
+	TweenService:Create(
+		toggle,
+		TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{BackgroundColor3 = enabled and Color3.fromRGB(35, 155, 235) or Color3.fromRGB(55, 60, 70)}
+	):Play()
+end
+
 local function setEnabled(enabled)
 	toggle:SetAttribute("Enabled", enabled)
+    savedSettings.enabled = enabled
+    saveSettings()
+	themeLabel.Visible = enabled
+	themeButton.Visible = enabled
+	animateToggle(enabled)
 
 	if enabled then
-		toggle.BackgroundColor3 = Color3.fromRGB(35, 155, 235)
-		knob.Position = UDim2.new(1, -27, 0.5, 0)
-
-		-- Hide Roblox's built-in hotbar while the extended one is active.
+		-- Hide Roblox's built-in hotbar while the custom inventory is active.
 		setNativeBackpackEnabled(false)
 		updateHotbar()
 	else
-		toggle.BackgroundColor3 = Color3.fromRGB(55, 60, 70)
-		knob.Position = UDim2.new(0, 3, 0.5, 0)
-
-		-- Hide our hotbar and restore Roblox's built-in hotbar.
+		-- Hide our hotbar and restore Roblox's native Backpack UI.
 		bar.Visible = false
 		setNativeBackpackEnabled(true)
 	end
 end
 
-toggle:SetAttribute("Enabled", true)
+toggle:SetAttribute("Enabled", false)
 toggle.Activated:Connect(function()
 	setEnabled(not toggle:GetAttribute("Enabled"))
 end)
+
+
+themeButton.Activated:Connect(function()
+	themeIndex = (themeIndex % #themes) + 1
+	themeButton.Text = themes[themeIndex].Name
+    savedSettings.themeIndex = themeIndex
+    saveSettings()
+	updateHotbar()
+end)
+
 
 -- Detect inventory changes without changing the stable slot order.
 backpack.ChildAdded:Connect(function(obj)
@@ -620,5 +726,15 @@ if player.Character then
 	connectCharacter(player.Character)
 end
 
--- Start enabled.
-setEnabled(true)
+-- Restore saved settings on startup.
+if type(savedSettings.themeIndex) == "number" then
+    themeIndex = math.clamp(math.floor(savedSettings.themeIndex), 1, #themes)
+end
+themeButton.Text = themes[themeIndex].Name
+
+setEnabled(savedSettings.enabled == true)
+
+if savedSettings.isCollapsed == true then
+    -- Collapse after the UI and callbacks have been initialized.
+    task.defer(collapse)
+end
