@@ -127,7 +127,7 @@ local settings = Instance.new("Frame")
 settings.Name = "Settings"
 settings.AnchorPoint = Vector2.new(0.5, 0.5)
 settings.Position = UDim2.new(0.5, 0, 0.5, 0)
-settings.Size = UDim2.new(0, 390, 0, 330)
+settings.Size = UDim2.new(0, 320, 0, 210)
 settings.BackgroundColor3 = Color3.fromRGB(24, 25, 30)
 settings.BorderSizePixel = 0
 settings.ZIndex = 100
@@ -207,37 +207,34 @@ credit.TextXAlignment = Enum.TextXAlignment.Left
 credit.ZIndex = 101
 credit.Parent = settings
 
--- Optional quality-of-life setting: faster UI animations.
-local performanceToggle = Instance.new("TextButton")
-performanceToggle.Name = "PerformanceToggle"
-performanceToggle.Size = UDim2.new(0, 150, 0, 28)
-performanceToggle.Position = UDim2.new(0, 20, 0, 282)
-performanceToggle.BackgroundColor3 = Color3.fromRGB(45, 50, 60)
-performanceToggle.BackgroundTransparency = 0.05
-performanceToggle.Text = "Performance mode: OFF"
-performanceToggle.TextColor3 = Color3.fromRGB(225, 230, 240)
-performanceToggle.TextSize = 13
-performanceToggle.Font = Enum.Font.GothamMedium
-performanceToggle.AutoButtonColor = false
-performanceToggle.ZIndex = 101
-performanceToggle.Parent = settings
-corner(performanceToggle, 7)
+-- Useful recovery button: returns the settings window and collapsed button
+-- to the center if they were dragged somewhere inconvenient.
+local resetPosition = Instance.new("TextButton")
+resetPosition.Name = "ResetPosition"
+resetPosition.Size = UDim2.new(0, 128, 0, 30)
+resetPosition.Position = UDim2.new(0, 176, 0, 100)
+resetPosition.BackgroundColor3 = Color3.fromRGB(45, 50, 60)
+resetPosition.BorderSizePixel = 0
+resetPosition.Text = "Reset position"
+resetPosition.TextColor3 = Color3.fromRGB(225, 230, 240)
+resetPosition.TextSize = 12
+resetPosition.Font = Enum.Font.GothamMedium
+resetPosition.AutoButtonColor = false
+resetPosition.ZIndex = 101
+resetPosition.Parent = settings
+corner(resetPosition, 7)
 
-local performanceMode = false
-local function uiTweenInfo(duration, style, direction)
-	if performanceMode then
-		duration = duration * 0.55
-	end
-	return TweenInfo.new(duration, style, direction)
-end
-
-performanceToggle.Activated:Connect(function()
-	performanceMode = not performanceMode
-	performanceToggle.Text = performanceMode and "Performance mode: ON" or "Performance mode: OFF"
-	performanceToggle.BackgroundColor3 = performanceMode
-		and Color3.fromRGB(35, 130, 185)
-		or Color3.fromRGB(45, 50, 60)
-end)
+local resetInfo = Instance.new("TextLabel")
+resetInfo.BackgroundTransparency = 1
+resetInfo.Position = UDim2.new(0, 20, 0, 100)
+resetInfo.Size = UDim2.new(0, 145, 0, 30)
+resetInfo.Text = "Window position"
+resetInfo.TextColor3 = Color3.fromRGB(180, 185, 198)
+resetInfo.TextSize = 12
+resetInfo.Font = Enum.Font.GothamMedium
+resetInfo.TextXAlignment = Enum.TextXAlignment.Left
+resetInfo.ZIndex = 101
+resetInfo.Parent = settings
 
 
 -- Collapsed square
@@ -261,316 +258,10 @@ stroke(collapsed, 1.5, Color3.fromRGB(70, 75, 90), 0)
 
 makeSmoothDraggable(collapsed, collapsed)
 
-
--- =========================
--- Extra quality-of-life settings
--- =========================
-
-local groupTitle = Instance.new("TextLabel")
-groupTitle.Name = "GroupMoverTitle"
-groupTitle.BackgroundTransparency = 1
-groupTitle.Position = UDim2.new(0, 20, 0, 92)
-groupTitle.Size = UDim2.new(1, -40, 0, 22)
-groupTitle.Text = "GUI Group Mover"
-groupTitle.TextColor3 = Color3.fromRGB(235, 235, 240)
-groupTitle.TextSize = 14
-groupTitle.Font = Enum.Font.GothamBold
-groupTitle.TextXAlignment = Enum.TextXAlignment.Left
-groupTitle.ZIndex = 101
-groupTitle.Parent = settings
-
-local groupInfo = Instance.new("TextLabel")
-groupInfo.Name = "GroupMoverInfo"
-groupInfo.BackgroundTransparency = 1
-groupInfo.Position = UDim2.new(0, 20, 0, 115)
-groupInfo.Size = UDim2.new(1, -40, 0, 32)
-groupInfo.Text = "Выбери контейнер GUI — двигай всю группу целиком."
-groupInfo.TextColor3 = Color3.fromRGB(145, 150, 165)
-groupInfo.TextSize = 12
-groupInfo.Font = Enum.Font.Gotham
-groupInfo.TextXAlignment = Enum.TextXAlignment.Left
-groupInfo.ZIndex = 101
-groupInfo.Parent = settings
-
-local groupList = Instance.new("ScrollingFrame")
-groupList.Name = "GroupList"
-groupList.Position = UDim2.new(0, 20, 0, 150)
-groupList.Size = UDim2.new(1, -40, 0, 78)
-groupList.BackgroundColor3 = Color3.fromRGB(32, 35, 42)
-groupList.BackgroundTransparency = 0.05
-groupList.BorderSizePixel = 0
-groupList.ScrollBarThickness = 3
-groupList.CanvasSize = UDim2.new()
-groupList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-groupList.ZIndex = 101
-groupList.Parent = settings
-corner(groupList, 8)
-
-local groupLayout = Instance.new("UIListLayout")
-groupLayout.Padding = UDim.new(0, 4)
-groupLayout.SortOrder = Enum.SortOrder.LayoutOrder
-groupLayout.Parent = groupList
-
-local selectedGroup = nil
-local groupDragConnection = nil
-local groupDragEndConnection = nil
-local groupDragInputConnection = nil
-local currentGroupHandle = nil
-
-local function isGuiGroupCandidate(obj)
-	if not obj:IsA("GuiObject") then
-		return false
-	end
-
-	if obj:IsDescendantOf(gui) then
-		return false
-	end
-
-	-- A "group" is a GuiObject container. Moving its Position moves
-	-- every descendant with it, so children stay together.
-	return obj.Parent and obj.Parent:IsA("LayerCollector")
-		or (obj.Parent and obj.Parent:IsA("GuiObject") and obj:IsA("Frame"))
-end
-
-local function stopGroupDrag()
-	if currentGroupHandle then
-		currentGroupHandle:Destroy()
-		currentGroupHandle = nil
-	end
-	if groupDragConnection then
-		groupDragConnection:Disconnect()
-		groupDragConnection = nil
-	end
-	if groupDragEndConnection then
-		groupDragEndConnection:Disconnect()
-		groupDragEndConnection = nil
-	end
-	if groupDragInputConnection then
-		groupDragInputConnection:Disconnect()
-		groupDragInputConnection = nil
-	end
-end
-
-local function dragGroup(group)
-	stopGroupDrag()
-	selectedGroup = group
-
-	local dragging = false
-	local startInput
-	local startPosition
-
-	local handle = Instance.new("TextButton")
-	handle.Name = "GroupDragHandle"
-	handle.Text = "✥"
-	handle.TextSize = 18
-	handle.TextColor3 = Color3.fromRGB(80, 205, 255)
-	handle.BackgroundColor3 = Color3.fromRGB(28, 32, 38)
-	handle.AutoButtonColor = false
-	handle.ZIndex = 100000
-	handle.Size = UDim2.new(0, 36, 0, 36)
-	handle.AnchorPoint = Vector2.new(0.5, 1)
-	handle.Position = UDim2.new(0.5, 0, 0, -8)
-	handle.Parent = group
-	currentGroupHandle = handle
-	corner(handle, 8)
-
-	local handleStroke = stroke(handle, 1.5, Color3.fromRGB(65, 190, 240), 0)
-
-	local function begin(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		dragging = true
-		startInput = input.Position
-		startPosition = group.Position
-
-		groupDragEndConnection = input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-				if groupDragEndConnection then
-					groupDragEndConnection:Disconnect()
-					groupDragEndConnection = nil
-				end
-			end
-		end)
-	end
-
-	handle.InputBegan:Connect(begin)
-
-	groupDragInputConnection = UserInputService.InputChanged:Connect(function(input)
-		if not dragging then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		local delta = input.Position - startInput
-		group.Position = UDim2.new(
-			startPosition.X.Scale,
-			startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale,
-			startPosition.Y.Offset + delta.Y
-		)
-	end)
-
-	-- Remove the helper handle when the group is deselected.
-	local function removeHandle()
-		if handle and handle.Parent then
-			handle:Destroy()
-		end
-	end
-
-	group.AncestryChanged:Connect(function()
-		if not group:IsDescendantOf(playerGui) then
-			removeHandle()
-			stopGroupDrag()
-		end
-	end)
-end
-
-local function clearGroupList()
-	for _, child in ipairs(groupList:GetChildren()) do
-		if child:IsA("TextButton") then
-			child:Destroy()
-		end
-	end
-end
-
-local function refreshGroupList()
-	clearGroupList()
-
-	local candidates = {}
-	for _, child in ipairs(playerGui:GetChildren()) do
-		if child ~= gui and child:IsA("ScreenGui") then
-			for _, obj in ipairs(child:GetChildren()) do
-				if isGuiGroupCandidate(obj) then
-					table.insert(candidates, obj)
-				end
-			end
-		end
-	end
-
-	table.sort(candidates, function(a, b)
-		return a:GetFullName() < b:GetFullName()
-	end)
-
-	for index, obj in ipairs(candidates) do
-		local button = Instance.new("TextButton")
-		button.Name = "Group_" .. index
-		button.Size = UDim2.new(1, -8, 0, 28)
-		button.BackgroundColor3 = Color3.fromRGB(45, 49, 58)
-		button.BorderSizePixel = 0
-		button.AutoButtonColor = false
-		button.Text = "  " .. obj.Name
-		button.TextColor3 = Color3.fromRGB(225, 230, 240)
-		button.TextSize = 12
-		button.Font = Enum.Font.GothamMedium
-		button.TextXAlignment = Enum.TextXAlignment.Left
-		button.ZIndex = 102
-		button.Parent = groupList
-		corner(button, 6)
-
-		button.Activated:Connect(function()
-			for _, other in ipairs(groupList:GetChildren()) do
-				if other:IsA("TextButton") then
-					other.BackgroundColor3 = Color3.fromRGB(45, 49, 58)
-				end
-			end
-			button.BackgroundColor3 = Color3.fromRGB(35, 125, 175)
-			dragGroup(obj)
-		end)
-	end
-
-	if #candidates == 0 then
-		local empty = Instance.new("TextLabel")
-		empty.Size = UDim2.new(1, -8, 0, 28)
-		empty.BackgroundTransparency = 1
-		empty.Text = "Нет подходящих GUI-групп"
-		empty.TextColor3 = Color3.fromRGB(135, 140, 155)
-		empty.TextSize = 12
-		empty.Font = Enum.Font.Gotham
-		empty.ZIndex = 102
-		empty.Parent = groupList
-	end
-end
-
-local refreshGroups = Instance.new("TextButton")
-refreshGroups.Name = "RefreshGroups"
-refreshGroups.Size = UDim2.new(0, 88, 0, 28)
-refreshGroups.Position = UDim2.new(1, -108, 0, 92)
-refreshGroups.BackgroundColor3 = Color3.fromRGB(45, 50, 60)
-refreshGroups.BorderSizePixel = 0
-refreshGroups.Text = "Refresh"
-refreshGroups.TextColor3 = Color3.fromRGB(225, 230, 240)
-refreshGroups.TextSize = 12
-refreshGroups.Font = Enum.Font.GothamMedium
-refreshGroups.AutoButtonColor = false
-refreshGroups.ZIndex = 102
-refreshGroups.Parent = settings
-corner(refreshGroups, 7)
-
-refreshGroups.Activated:Connect(refreshGroupList)
-refreshGroupList()
-
--- A compact UI-scale control. It scales the whole custom GUI without changing
--- the device resolution.
-local scaleTitle = Instance.new("TextLabel")
-scaleTitle.BackgroundTransparency = 1
-scaleTitle.Position = UDim2.new(0, 220, 0, 245)
-scaleTitle.Size = UDim2.new(0, 65, 0, 28)
-scaleTitle.Text = "UI Scale"
-scaleTitle.TextColor3 = Color3.fromRGB(225, 230, 240)
-scaleTitle.TextSize = 12
-scaleTitle.Font = Enum.Font.GothamMedium
-scaleTitle.TextXAlignment = Enum.TextXAlignment.Left
-scaleTitle.ZIndex = 101
-scaleTitle.Parent = settings
-
-local scaleDown = Instance.new("TextButton")
-scaleDown.Size = UDim2.new(0, 28, 0, 28)
-scaleDown.Position = UDim2.new(0, 285, 0, 245)
-scaleDown.Text = "−"
-scaleDown.TextSize = 18
-scaleDown.TextColor3 = Color3.fromRGB(230, 235, 240)
-scaleDown.BackgroundColor3 = Color3.fromRGB(45, 50, 60)
-scaleDown.BorderSizePixel = 0
-scaleDown.AutoButtonColor = false
-scaleDown.ZIndex = 101
-scaleDown.Parent = settings
-corner(scaleDown, 7)
-
-local scaleUp = Instance.new("TextButton")
-scaleUp.Size = UDim2.new(0, 28, 0, 28)
-scaleUp.Position = UDim2.new(0, 317, 0, 245)
-scaleUp.Text = "+"
-scaleUp.TextSize = 18
-scaleUp.TextColor3 = Color3.fromRGB(230, 235, 240)
-scaleUp.BackgroundColor3 = Color3.fromRGB(45, 50, 60)
-scaleUp.BorderSizePixel = 0
-scaleUp.AutoButtonColor = false
-scaleUp.ZIndex = 101
-scaleUp.Parent = settings
-corner(scaleUp, 7)
-
-local uiScale = Instance.new("UIScale")
-uiScale.Scale = 1
-uiScale.Parent = gui
-
-local function changeUIScale(delta)
-	uiScale.Scale = math.clamp(uiScale.Scale + delta, 0.75, 1.25)
-end
-
-scaleDown.Activated:Connect(function()
-	changeUIScale(-0.05)
-end)
-
-scaleUp.Activated:Connect(function()
-	changeUIScale(0.05)
+resetPosition.Activated:Connect(function()
+	local center = UDim2.new(0.5, 0, 0.5, 0)
+	settings.Position = center
+	collapsed.Position = center
 end)
 
 makeSmoothDraggable(settings, header)
@@ -580,7 +271,7 @@ local settingsOpenPosition = settings.Position
 local collapsedSize = collapsed.Size
 
 local fadeObjects = {
-	header, close, title, toggle, credit
+	header, close, title, toggle, credit, resetPosition, resetInfo
 }
 
 local function setGroupTransparency(value)
@@ -605,7 +296,7 @@ local function collapse()
 	collapsed.BackgroundTransparency = 1
 	collapsed.TextTransparency = 1
 
-	local outInfo = uiTweenInfo(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+	local outInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 	local fadeInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 	TweenService:Create(settings, outInfo, {
@@ -613,7 +304,7 @@ local function collapse()
 		BackgroundTransparency = 1
 	}):Play()
 
-	TweenService:Create(collapsed, uiTweenInfo(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+	TweenService:Create(collapsed, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		Size = collapsedSize,
 		BackgroundTransparency = 0,
 		TextTransparency = 0
@@ -646,7 +337,7 @@ local function expand()
 
 	collapsed.Visible = false
 
-	TweenService:Create(settings, uiTweenInfo(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+	TweenService:Create(settings, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 		Size = settingsOpenSize,
 		BackgroundTransparency = 0
 	}):Play()
@@ -657,7 +348,7 @@ local function expand()
 		setGroupTransparency(dummy.Value)
 	end)
 
-	TweenService:Create(dummy, uiTweenInfo(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+	TweenService:Create(dummy, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Value = 0
 	}):Play()
 
