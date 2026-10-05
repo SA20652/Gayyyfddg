@@ -557,8 +557,6 @@ local function getTools()
 	return result
 end
 
-local inventoryAvailable = true
-
 local function updateHotbar()
 	for _, child in ipairs(bar:GetChildren()) do
 		if child:IsA("GuiButton") then
@@ -572,11 +570,9 @@ local function updateHotbar()
 	local tools = getTools()
 	local count = #tools
 
-	bar.Visible = toggle:GetAttribute("Enabled") == true
-		and inventoryAvailable
-		and count > 0
+	bar.Visible = toggle:GetAttribute("Enabled") == true and count > 0
 
-	if count == 0 or not inventoryAvailable then
+	if count == 0 then
 		return
 	end
 
@@ -732,7 +728,6 @@ end)
 backpack.ChildAdded:Connect(function(obj)
 	if obj:IsA("Tool") then
 		rememberTool(obj)
-		inventoryAvailable = true
 		task.defer(updateHotbar)
 	end
 end)
@@ -744,10 +739,9 @@ backpack.ChildRemoved:Connect(function(obj)
 end)
 
 local function connectCharacter(character)
-	-- A respawn can create the Character and its Tools before this callback
-	-- finishes. Do not leave the custom hotbar permanently disabled just
-	-- because the first update happened during that short transition.
-	inventoryAvailable = false
+	-- Rebuild from the new Character/Backpack. The hotbar visibility is
+	-- determined only by whether Tools currently exist, so it cannot get
+	-- stuck hidden after respawn.
 	bar.Visible = false
 
 	local function hasInventoryTool()
@@ -766,21 +760,19 @@ local function connectCharacter(character)
 		return false
 	end
 
-	if hasInventoryTool() then
-		inventoryAvailable = true
-	end
+	hasInventoryTool()
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.Died:Connect(function()
-			inventoryAvailable = false
 			bar.Visible = false
+			selectedTool = nil
+			task.defer(updateHotbar)
 		end)
 	end
 
 	character.ChildAdded:Connect(function(obj)
 		if obj:IsA("Tool") then
-			inventoryAvailable = true
 			rememberTool(obj)
 			-- Character movement is not itself a selection change.
 			-- Selection is controlled by the slot button.
@@ -823,7 +815,6 @@ local function connectBackpack(newBackpack)
 	backpackConnection = backpack.ChildAdded:Connect(function(obj)
 		if obj:IsA("Tool") then
 			rememberTool(obj)
-			inventoryAvailable = true
 			task.defer(updateHotbar)
 		end
 	end)
@@ -842,7 +833,6 @@ local function connectBackpack(newBackpack)
 		end
 	end
 	if hasTool then
-		inventoryAvailable = true
 	end
 	task.defer(updateHotbar)
 end
@@ -859,6 +849,41 @@ if player.Character then
 	connectCharacter(player.Character)
 end
 
+-- Continuously reconcile the custom hotbar with the live Roblox inventory.
+-- Some games recreate/move Tools several frames after respawn; relying only
+-- on ChildAdded can miss that transition. This loop only rebuilds when the
+-- inventory state actually changes.
+local lastInventorySignature = ""
+task.spawn(function()
+	while gui.Parent do
+		if toggle:GetAttribute("Enabled") == true then
+			local parts = {}
+			local currentBackpack = player:FindFirstChildOfClass("Backpack")
+			if currentBackpack then
+				if currentBackpack ~= backpack then
+					connectBackpack(currentBackpack)
+				end
+				for _, obj in ipairs(currentBackpack:GetChildren()) do
+					if obj:IsA("Tool") then table.insert(parts, "B:" .. obj:GetDebugId()) end
+				end
+			end
+			local character = player.Character
+			if character then
+				for _, obj in ipairs(character:GetChildren()) do
+					if obj:IsA("Tool") then table.insert(parts, "C:" .. obj:GetDebugId()) end
+				end
+			end
+			table.sort(parts)
+			local signature = table.concat(parts, "|")
+			if signature ~= lastInventorySignature then
+				lastInventorySignature = signature
+				updateHotbar()
+			end
+		end
+		task.wait(0.35)
+	end
+end)
+
 -- Restore saved settings on startup.
 if type(savedSettings.themeIndex) == "number" then
     themeIndex = math.clamp(math.floor(savedSettings.themeIndex), 1, #themes)
@@ -866,7 +891,6 @@ end
 themeButton.Text = themes[themeIndex].Name
 
 setEnabled(savedSettings.enabled == true)
-inventoryAvailable = true
 task.defer(updateHotbar)
 
 if savedSettings.isCollapsed == true then
