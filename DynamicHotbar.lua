@@ -1,9 +1,21 @@
--- DynamicHotbar.lua
+-- inventory.lua
 -- LocalScript for your own Roblox experience.
--- Place in StarterPlayer > StarterPlayerScripts
+-- Place in StarterPlayer > StarterPlayerScripts.
+--
+-- Features:
+-- * Dynamic hotbar: one slot per Tool, up to 10 visible slots.
+-- * Stable slot positions: equipping a Tool does not move it.
+-- * Selected slot gets a cyan/blue outline.
+-- * Startup settings window: "Enable extended inventory" + toggle.
+-- * Window is draggable on mouse/touch.
+-- * X collapses the window to a square; tapping the square restores it.
+-- * Author credit: by GDplay/by kitzkuro
+--
+-- This is intended for a Roblox Studio experience you control.
 
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -13,39 +25,250 @@ pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 end)
 
-local old = playerGui:FindFirstChild("DynamicHotbar")
-if old then
-	old:Destroy()
+local existing = playerGui:FindFirstChild("ExtendedInventory")
+if existing then
+	existing:Destroy()
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "DynamicHotbar"
+gui.Name = "ExtendedInventory"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
+gui.DisplayOrder = 50
 gui.Parent = playerGui
+
+-- =========================
+-- Utility
+-- =========================
+
+local function corner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+	return c
+end
+
+local function stroke(parent, thickness, color, transparency)
+	local s = Instance.new("UIStroke")
+	s.Thickness = thickness
+	s.Color = color
+	s.Transparency = transparency or 0
+	s.Parent = parent
+	return s
+end
+
+local function makeDraggable(frame, handle)
+	local dragging = false
+	local dragStart
+	local startPos
+
+	local function begin(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+
+			local connection
+			connection = input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					if connection then
+						connection:Disconnect()
+					end
+				end
+			end)
+		end
+	end
+
+	local function move(input)
+		if not dragging then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local delta = input.Position - dragStart
+
+		frame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
+	end
+
+	handle.InputBegan:Connect(begin)
+	UserInputService.InputChanged:Connect(move)
+end
+
+-- =========================
+-- Settings window
+-- =========================
+
+local settings = Instance.new("Frame")
+settings.Name = "Settings"
+settings.AnchorPoint = Vector2.new(0.5, 0.5)
+settings.Position = UDim2.new(0.5, 0, 0.5, 0)
+settings.Size = UDim2.new(0, 340, 0, 145)
+settings.BackgroundColor3 = Color3.fromRGB(24, 25, 30)
+settings.BorderSizePixel = 0
+settings.Parent = gui
+corner(settings, 12)
+stroke(settings, 1.5, Color3.fromRGB(70, 75, 90), 0)
+
+local header = Instance.new("TextLabel")
+header.Name = "Header"
+header.BackgroundTransparency = 1
+header.Position = UDim2.new(0, 16, 0, 8)
+header.Size = UDim2.new(1, -60, 0, 28)
+header.Text = "Inventory Settings"
+header.TextColor3 = Color3.fromRGB(245, 245, 250)
+header.TextSize = 18
+header.Font = Enum.Font.GothamBold
+header.TextXAlignment = Enum.TextXAlignment.Left
+header.Parent = settings
+
+local close = Instance.new("TextButton")
+close.Name = "Close"
+close.AnchorPoint = Vector2.new(1, 0)
+close.Position = UDim2.new(1, -8, 0, 7)
+close.Size = UDim2.new(0, 30, 0, 30)
+close.BackgroundTransparency = 1
+close.Text = "×"
+close.TextColor3 = Color3.fromRGB(230, 230, 235)
+close.TextSize = 26
+close.Font = Enum.Font.GothamBold
+close.Parent = settings
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Position = UDim2.new(0, 16, 0, 48)
+title.Size = UDim2.new(1, -100, 0, 30)
+title.Text = "Enable extended inventory"
+title.TextColor3 = Color3.fromRGB(235, 235, 240)
+title.TextSize = 15
+title.Font = Enum.Font.GothamMedium
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = settings
+
+local toggle = Instance.new("TextButton")
+toggle.Name = "Toggle"
+toggle.AnchorPoint = Vector2.new(1, 0.5)
+toggle.Position = UDim2.new(1, -18, 0, 63)
+toggle.Size = UDim2.new(0, 58, 0, 30)
+toggle.BackgroundColor3 = Color3.fromRGB(55, 60, 70)
+toggle.Text = ""
+toggle.AutoButtonColor = false
+toggle.Parent = settings
+corner(toggle, 15)
+
+local knob = Instance.new("Frame")
+knob.Name = "Knob"
+knob.AnchorPoint = Vector2.new(0, 0.5)
+knob.Position = UDim2.new(0, 3, 0.5, 0)
+knob.Size = UDim2.new(0, 24, 0, 24)
+knob.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
+knob.Parent = toggle
+corner(knob, 12)
+
+local credit = Instance.new("TextLabel")
+credit.BackgroundTransparency = 1
+credit.Position = UDim2.new(0, 16, 1, -31)
+credit.Size = UDim2.new(1, -32, 0, 20)
+credit.Text = "by GDplay/by kitzkuro"
+credit.TextColor3 = Color3.fromRGB(135, 140, 155)
+credit.TextSize = 12
+credit.Font = Enum.Font.Gotham
+credit.TextXAlignment = Enum.TextXAlignment.Left
+credit.Parent = settings
+
+-- Collapsed square
+local collapsed = Instance.new("TextButton")
+collapsed.Name = "Collapsed"
+collapsed.AnchorPoint = Vector2.new(0.5, 0.5)
+collapsed.Position = settings.Position
+collapsed.Size = UDim2.new(0, 54, 0, 54)
+collapsed.BackgroundColor3 = Color3.fromRGB(24, 25, 30)
+collapsed.BorderSizePixel = 0
+collapsed.Text = "≡"
+collapsed.TextColor3 = Color3.fromRGB(235, 235, 240)
+collapsed.TextSize = 25
+collapsed.Font = Enum.Font.GothamBold
+collapsed.Visible = false
+collapsed.Parent = gui
+corner(collapsed, 12)
+stroke(collapsed, 1.5, Color3.fromRGB(70, 75, 90), 0)
+
+makeDraggable(settings, header)
+
+local function collapse()
+	collapsed.Position = settings.Position
+	settings.Visible = false
+	collapsed.Visible = true
+end
+
+local function expand()
+	settings.Position = collapsed.Position
+	collapsed.Visible = false
+	settings.Visible = true
+end
+
+close.Activated:Connect(collapse)
+collapsed.Activated:Connect(expand)
+
+-- =========================
+-- Stable dynamic hotbar
+-- =========================
 
 local bar = Instance.new("Frame")
 bar.Name = "Hotbar"
 bar.AnchorPoint = Vector2.new(0.5, 1)
-bar.Position = UDim2.new(0.5, 0, 0.98, 0)
-bar.Size = UDim2.new(0.78, 0, 0.14, 0)
+bar.Position = UDim2.new(0.5, 0, 0.985, 0)
+bar.Size = UDim2.new(0.80, 0, 0.14, 0)
 bar.BackgroundTransparency = 1
+bar.Visible = false
 bar.Parent = gui
 
-local layout = Instance.new("UIListLayout")
-layout.FillDirection = Enum.FillDirection.Horizontal
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-layout.VerticalAlignment = Enum.VerticalAlignment.Center
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0.008, 0)
-layout.Parent = bar
+local list = Instance.new("UIListLayout")
+list.FillDirection = Enum.FillDirection.Horizontal
+list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+list.VerticalAlignment = Enum.VerticalAlignment.Center
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.Padding = UDim.new(0, 6)
+list.Parent = bar
+
+-- Stable order is maintained by Tool instance, so equipping a Tool
+-- does not make its slot jump to another position.
+local order = {}
+local orderCounter = 0
+local selectedTool = nil
+
+local function rememberTool(tool)
+	if order[tool] == nil then
+		orderCounter += 1
+		order[tool] = orderCounter
+	end
+end
+
+local function forgetMissingTools()
+	for tool in pairs(order) do
+		if not tool:IsDescendantOf(player) then
+			order[tool] = nil
+		end
+	end
+end
 
 local function getTools()
-	local tools = {}
+	local result = {}
 
 	for _, obj in ipairs(backpack:GetChildren()) do
 		if obj:IsA("Tool") then
-			table.insert(tools, obj)
+			rememberTool(obj)
+			table.insert(result, obj)
 		end
 	end
 
@@ -53,124 +276,160 @@ local function getTools()
 	if character then
 		for _, obj in ipairs(character:GetChildren()) do
 			if obj:IsA("Tool") then
-				table.insert(tools, obj)
+				rememberTool(obj)
+				table.insert(result, obj)
 			end
 		end
 	end
 
-	return tools
+	table.sort(result, function(a, b)
+		return (order[a] or math.huge) < (order[b] or math.huge)
+	end)
+
+	return result
 end
 
-local function clearSlots()
+local function updateHotbar()
 	for _, child in ipairs(bar:GetChildren()) do
 		if child:IsA("GuiButton") then
 			child:Destroy()
 		end
 	end
-end
 
-local function createHotbar()
-	clearSlots()
+	for tool in pairs(order) do
+		if not tool:IsDescendantOf(player) then
+			order[tool] = nil
+		end
+	end
 
 	local tools = getTools()
 	local count = #tools
+
+	bar.Visible = toggle:GetAttribute("Enabled") == true and count > 0
 
 	if count == 0 then
 		return
 	end
 
-	-- Up to 10 visible slots. If there are more than 10 tools,
-	-- only the first 10 are shown.
 	local visibleCount = math.min(count, 10)
-	local slotWidth = math.min(0.18, 0.9 / visibleCount)
+	local width = math.min(0.17, 0.9 / visibleCount)
 
-	for index = 1, visibleCount do
-		local tool = tools[index]
+	for i = 1, visibleCount do
+		local tool = tools[i]
 
 		local slot = Instance.new("ImageButton")
-		slot.Name = "Slot_" .. index
-		slot.LayoutOrder = index
-		slot.Size = UDim2.new(slotWidth, 0, 0.82, 0)
+		slot.Name = "Slot_" .. i
+		slot.LayoutOrder = i
+		slot.Size = UDim2.new(width, 0, 0.82, 0)
 		slot.BackgroundColor3 = Color3.fromRGB(235, 225, 185)
 		slot.BackgroundTransparency = 0.12
-		slot.BorderSizePixel = 2
-		slot.BorderColor3 = Color3.fromRGB(120, 105, 75)
+		slot.BorderSizePixel = 0
 		slot.AutoButtonColor = true
-		slot.Image = ""
+		slot.Image = tool.TextureId or ""
 		slot.ScaleType = Enum.ScaleType.Fit
 		slot.Parent = bar
+		corner(slot, 4)
 
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0.06, 0)
-		corner.Parent = slot
+		local outlineColor = Color3.fromRGB(70, 75, 85)
+		local outlineWidth = 1
+
+		if tool == selectedTool then
+			outlineColor = Color3.fromRGB(40, 190, 255)
+			outlineWidth = 3
+		end
+
+		local outline = stroke(slot, outlineWidth, outlineColor, 0)
 
 		local number = Instance.new("TextLabel")
 		number.Name = "Number"
 		number.BackgroundTransparency = 1
 		number.Position = UDim2.new(0.04, 0, 0.02, 0)
 		number.Size = UDim2.new(0.25, 0, 0.25, 0)
-		number.Text = tostring(index)
-		number.TextScaled = true
+		number.Text = tostring(i)
 		number.TextColor3 = Color3.fromRGB(40, 40, 40)
+		number.TextScaled = true
 		number.Font = Enum.Font.GothamBold
 		number.Parent = slot
 
-		if tool.TextureId and tool.TextureId ~= "" then
-			slot.Image = tool.TextureId
-		end
-
 		slot.Activated:Connect(function()
 			local character = player.Character
-			if not character then return end
+			if not character then
+				return
+			end
 
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
-			if not humanoid then return end
+			if not humanoid then
+				return
+			end
 
 			if tool.Parent == backpack then
 				humanoid:EquipTool(tool)
+				selectedTool = tool
 			elseif tool.Parent == character then
-				humanoid:UnequipTools()
+				selectedTool = tool
 			end
+
+			updateHotbar()
 		end)
 	end
 end
 
-local function refresh()
-	task.defer(createHotbar)
+local function setEnabled(enabled)
+	toggle:SetAttribute("Enabled", enabled)
+
+	if enabled then
+		toggle.BackgroundColor3 = Color3.fromRGB(35, 155, 235)
+		knob.Position = UDim2.new(1, -27, 0.5, 0)
+	else
+		toggle.BackgroundColor3 = Color3.fromRGB(55, 60, 70)
+		knob.Position = UDim2.new(0, 3, 0.5, 0)
+	end
+
+	updateHotbar()
 end
 
+toggle:SetAttribute("Enabled", true)
+toggle.Activated:Connect(function()
+	setEnabled(not toggle:GetAttribute("Enabled"))
+end)
+
+-- Detect inventory changes without changing the stable slot order.
 backpack.ChildAdded:Connect(function(obj)
 	if obj:IsA("Tool") then
-		refresh()
+		rememberTool(obj)
+		task.defer(updateHotbar)
 	end
 end)
 
 backpack.ChildRemoved:Connect(function(obj)
 	if obj:IsA("Tool") then
-		refresh()
+		task.defer(updateHotbar)
 	end
 end)
 
 local function connectCharacter(character)
 	character.ChildAdded:Connect(function(obj)
 		if obj:IsA("Tool") then
-			refresh()
+			rememberTool(obj)
+			selectedTool = obj
+			task.defer(updateHotbar)
 		end
 	end)
 
 	character.ChildRemoved:Connect(function(obj)
 		if obj:IsA("Tool") then
-			refresh()
+			task.defer(updateHotbar)
 		end
 	end)
 
-	refresh()
+	task.defer(updateHotbar)
 end
 
 player.CharacterAdded:Connect(connectCharacter)
 
 if player.Character then
 	connectCharacter(player.Character)
-else
-	refresh()
 end
+
+-- Start enabled.
+setEnabled(true)
