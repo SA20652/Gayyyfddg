@@ -100,9 +100,11 @@ end
 
 local function makeSmoothDraggable(frame, handle, onDragEnd)
 	local dragging = false
+	local moved = false
 	local dragStart
 	local startPos
 	local tween
+	local DRAG_THRESHOLD = 8
 
 	local function tweenTo(position)
 		if tween then
@@ -122,6 +124,7 @@ local function makeSmoothDraggable(frame, handle, onDragEnd)
 			or input.UserInputType == Enum.UserInputType.Touch then
 
 			dragging = true
+			moved = false
 			dragStart = input.Position
 			startPos = frame.Position
 
@@ -149,6 +152,10 @@ local function makeSmoothDraggable(frame, handle, onDragEnd)
 		end
 
 		local delta = input.Position - dragStart
+
+		if delta.Magnitude >= DRAG_THRESHOLD then
+			moved = true
+		end
 
 		tweenTo(UDim2.new(
 			startPos.X.Scale,
@@ -328,138 +335,11 @@ corner(collapsed, 12)
 stroke(collapsed, 1.5, Color3.fromRGB(70, 75, 90), 0)
 
 settings.Position = tableToPosition(savedSettings.settingsPosition, settings.Position)
-collapsed.Position = tableToPosition(savedSettings.collapsedPosition, UDim2.new(
-    settings.Position.X.Scale,
-    settings.Position.X.Offset,
-    settings.Position.Y.Scale,
-    settings.Position.Y.Offset
-))
+collapsed.Position = tableToPosition(savedSettings.collapsedPosition, settings.Position)
 
-local settingsOpenSize = settings.Size
-local settingsOpenPosition = settings.Position
-local collapsedSize = collapsed.Size
-
-local fadeObjects = {
-    header, close, title, toggle, credit, themeLabel, themeButton
-}
-
-local function setGroupTransparency(value)
-    for _, object in ipairs(fadeObjects) do
-        if object:IsA("TextLabel") or object:IsA("TextButton") then
-            object.TextTransparency = value
-        end
-    end
-
-    toggle.BackgroundTransparency = math.clamp(value, 0, 0.9)
-    knob.BackgroundTransparency = math.clamp(value, 0, 0.9)
-end
-
-local function tweenGroupTransparency(target, duration, easingStyle)
-    local value = Instance.new("NumberValue")
-    value.Value = target == 0 and 1 or 0
-
-    local connection = value:GetPropertyChangedSignal("Value"):Connect(function()
-        setGroupTransparency(value.Value)
-    end)
-
-    local tween = TweenService:Create(
-        value,
-        TweenInfo.new(duration, easingStyle or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {Value = target}
-    )
-    tween:Play()
-
-    tween.Completed:Connect(function()
-        connection:Disconnect()
-        value:Destroy()
-    end)
-
-    return tween
-end
-
-local function collapse()
-    if not settings.Visible then
-        return
-    end
-
-    -- Settings and the collapsed square have completely independent positions.
-    savedSettings.isCollapsed = true
-    savedSettings.settingsPosition = positionToTable(settings.Position)
-    savedSettings.collapsedPosition = positionToTable(collapsed.Position)
-    saveSettings()
-
-    local sourcePosition = settings.Position
-
-    collapsed.Visible = true
-    collapsed.Size = UDim2.new(0, 8, 0, 8)
-    collapsed.BackgroundTransparency = 1
-    collapsed.TextTransparency = 1
-
-    local windowTween = TweenService:Create(
-        settings,
-        TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-        {
-            Size = UDim2.new(0, 185, 0, 135),
-            BackgroundTransparency = 1
-        }
-    )
-    windowTween:Play()
-    tweenGroupTransparency(1, 0.16, Enum.EasingStyle.Quad)
-
-    TweenService:Create(
-        collapsed,
-        TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-        {
-            Size = collapsedSize,
-            BackgroundTransparency = 0,
-            TextTransparency = 0
-        }
-    ):Play()
-
-    windowTween.Completed:Connect(function()
-        settings.Visible = false
-        settings.Size = settingsOpenSize
-        settings.Position = sourcePosition
-        settings.BackgroundTransparency = 0
-        setGroupTransparency(0)
-    end)
-end
-
-local function expand()
-    if settings.Visible then
-        return
-    end
-
-    -- Do NOT move the settings window to the square's position.
-    savedSettings.isCollapsed = false
-    savedSettings.settingsPosition = positionToTable(settings.Position)
-    savedSettings.collapsedPosition = positionToTable(collapsed.Position)
-    saveSettings()
-
-    settings.Position = tableToPosition(
-        savedSettings.settingsPosition,
-        settingsOpenPosition
-    )
-    settings.Visible = true
-    settings.Size = UDim2.new(0, 185, 0, 135)
-    settings.BackgroundTransparency = 1
-    setGroupTransparency(1)
-
-    collapsed.Visible = false
-
-    TweenService:Create(
-        settings,
-        TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-        {
-            Size = settingsOpenSize,
-            BackgroundTransparency = 0
-        }
-    ):Play()
-
-    tweenGroupTransparency(0, 0.25, Enum.EasingStyle.Quad)
-end
-
-makeSmoothDraggable(collapsed, collapsed, function()
+local collapsedWasDragged = false
+makeSmoothDraggable(collapsed, collapsed, function(wasDragged)
+    collapsedWasDragged = wasDragged == true
     savedSettings.collapsedPosition = positionToTable(collapsed.Position)
     saveSettings()
 end)
@@ -469,8 +349,114 @@ makeSmoothDraggable(settings, header, function()
     saveSettings()
 end)
 
+local settingsOpenSize = settings.Size
+local settingsOpenPosition = settings.Position
+local collapsedSize = collapsed.Size
+
+local fadeObjects = {
+	header, close, title, toggle, credit, themeLabel, themeButton
+}
+
+local function setGroupTransparency(value)
+	for _, object in ipairs(fadeObjects) do
+		if object:IsA("TextLabel") or object:IsA("TextButton") then
+			object.TextTransparency = value
+		end
+	end
+
+	toggle.BackgroundTransparency = math.clamp(value, 0, 0.9)
+	knob.BackgroundTransparency = math.clamp(value, 0, 0.9)
+end
+
+local function collapse()
+	if not settings.Visible then
+		return
+	end
+    savedSettings.isCollapsed = true
+    savedSettings.settingsPosition = positionToTable(settings.Position)
+    savedSettings.collapsedPosition = positionToTable(settings.Position)
+    saveSettings()
+
+	collapsed.Position = settings.Position
+	collapsed.Visible = true
+	collapsed.Size = UDim2.new(0, 10, 0, 10)
+	collapsed.BackgroundTransparency = 1
+	collapsed.TextTransparency = 1
+
+	local outInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+	local fadeInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+	TweenService:Create(settings, outInfo, {
+		Size = UDim2.new(0, 70, 0, 70),
+		BackgroundTransparency = 1
+	}):Play()
+
+	TweenService:Create(collapsed, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = collapsedSize,
+		BackgroundTransparency = 0,
+		TextTransparency = 0
+	}):Play()
+
+	TweenService:Create(settings, fadeInfo, {
+		BackgroundTransparency = 1
+	}):Play()
+
+	setGroupTransparency(1)
+
+	task.delay(0.30, function()
+		settings.Visible = false
+		settings.Size = settingsOpenSize
+		settings.BackgroundTransparency = 0
+		setGroupTransparency(0)
+	end)
+end
+
+local function expand()
+	if settings.Visible then
+		return
+	end
+    savedSettings.isCollapsed = false
+    savedSettings.collapsedPosition = positionToTable(collapsed.Position)
+    saveSettings()
+
+	settings.Position = collapsed.Position
+	settings.Visible = true
+	settings.Size = UDim2.new(0, 70, 0, 70)
+	settings.BackgroundTransparency = 1
+	setGroupTransparency(1)
+
+	collapsed.Visible = false
+
+	TweenService:Create(settings, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = settingsOpenSize,
+		BackgroundTransparency = 0
+	}):Play()
+
+	local dummy = Instance.new("NumberValue")
+	dummy.Value = 1
+	dummy:GetPropertyChangedSignal("Value"):Connect(function()
+		setGroupTransparency(dummy.Value)
+	end)
+
+	TweenService:Create(dummy, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Value = 0
+	}):Play()
+
+	task.delay(0.28, function()
+		dummy:Destroy()
+	end)
+end
+
 close.Activated:Connect(collapse)
-collapsed.Activated:Connect(expand)
+collapsed.Activated:Connect(function()
+    -- Roblox fires Activated after a drag as well as after a tap.
+    -- A real drag must never also open the settings window.
+    if collapsedWasDragged then
+        collapsedWasDragged = false
+        return
+    end
+    expand()
+end)
 
 -- =========================
 -- Stable dynamic hotbar
@@ -541,7 +527,24 @@ local function getTools()
 	return result
 end
 
-local function updateHotbar()
+local inventorySuppressed = false
+local inventoryGeneration = 0
+local updateHotbar
+
+local function setInventorySuppressed(suppressed)
+    inventorySuppressed = suppressed == true
+    if inventorySuppressed then
+        bar.Visible = false
+    else
+        task.defer(function()
+            if updateHotbar then
+                updateHotbar()
+            end
+        end)
+    end
+end
+
+updateHotbar = function()
 	for _, child in ipairs(bar:GetChildren()) do
 		if child:IsA("GuiButton") then
 			child:Destroy()
@@ -554,7 +557,7 @@ local function updateHotbar()
 	local tools = getTools()
 	local count = #tools
 
-	bar.Visible = toggle:GetAttribute("Enabled") == true and count > 0
+	bar.Visible = toggle:GetAttribute("Enabled") == true and count > 0 and not inventorySuppressed
 
 	if count == 0 then
 		return
@@ -712,6 +715,12 @@ end)
 backpack.ChildAdded:Connect(function(obj)
 	if obj:IsA("Tool") then
 		rememberTool(obj)
+        if player.Character then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                setInventorySuppressed(false)
+            end
+        end
 		task.defer(updateHotbar)
 	end
 end)
@@ -723,9 +732,26 @@ backpack.ChildRemoved:Connect(function(obj)
 end)
 
 local function connectCharacter(character)
+    inventoryGeneration += 1
+    local generation = inventoryGeneration
+    inventorySuppressed = true
+    bar.Visible = false
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        humanoid.Died:Connect(function()
+            if generation == inventoryGeneration then
+                setInventorySuppressed(true)
+            end
+        end)
+    end
+
 	character.ChildAdded:Connect(function(obj)
 		if obj:IsA("Tool") then
 			rememberTool(obj)
+            if generation == inventoryGeneration and character.Parent == player.Character then
+                setInventorySuppressed(false)
+            end
 			-- Character movement is not itself a selection change.
 			-- Selection is controlled by the slot button.
 			task.defer(updateHotbar)
@@ -748,7 +774,18 @@ local function connectCharacter(character)
 		end
 	end)
 
-	task.defer(updateHotbar)
+    task.defer(function()
+        task.wait(0.15)
+        if generation ~= inventoryGeneration or character ~= player.Character then
+            return
+        end
+        local tools = getTools()
+        if #tools > 0 and humanoid and humanoid.Health > 0 then
+            setInventorySuppressed(false)
+        else
+            updateHotbar()
+        end
+    end)
 end
 
 player.CharacterAdded:Connect(connectCharacter)
