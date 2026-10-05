@@ -467,16 +467,46 @@ local function updateHotbar()
 				return
 			end
 
+			-- Tap ANY currently selected/equipped Tool again:
+			-- unequip it, clear the blue outline, but KEEP the Tool.
+			-- This applies equally to hammers, brushes, weapons, etc.
+			if tool == selectedTool and tool.Parent == character then
+				humanoid:UnequipTools()
+				selectedTool = nil
+				updateHotbar()
+				return
+			end
+
+			-- Select/equip another tool without changing its stored slot.
 			if tool.Parent == backpack then
 				humanoid:EquipTool(tool)
 				selectedTool = tool
-			elseif tool.Parent == character then
-				selectedTool = tool
+				updateHotbar()
+				return
 			end
 
-			updateHotbar()
+			-- If it is already in Character, keep it selected.
+			if tool.Parent == character then
+				selectedTool = tool
+				updateHotbar()
+			end
 		end)
 	end
+end
+
+local function setNativeBackpackEnabled(enabled)
+	-- Roblox CoreGui can be a little slow to initialize, so retry briefly.
+	task.spawn(function()
+		for _ = 1, 8 do
+			local ok = pcall(function()
+				StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, enabled)
+			end)
+			if ok then
+				return
+			end
+			task.wait(0.1)
+		end
+	end)
 end
 
 local function setEnabled(enabled)
@@ -485,16 +515,17 @@ local function setEnabled(enabled)
 	if enabled then
 		toggle.BackgroundColor3 = Color3.fromRGB(35, 155, 235)
 		knob.Position = UDim2.new(1, -27, 0.5, 0)
+
+		-- Hide Roblox's built-in hotbar while the extended one is active.
+		setNativeBackpackEnabled(false)
+		updateHotbar()
 	else
 		toggle.BackgroundColor3 = Color3.fromRGB(55, 60, 70)
 		knob.Position = UDim2.new(0, 3, 0.5, 0)
+
+		-- Hide our hotbar and restore Roblox's built-in hotbar.
 		bar.Visible = false
 		setNativeBackpackEnabled(true)
-	end
-
-	if enabled then
-		setNativeBackpackEnabled(false)
-		updateHotbar()
 	end
 end
 
@@ -521,14 +552,25 @@ local function connectCharacter(character)
 	character.ChildAdded:Connect(function(obj)
 		if obj:IsA("Tool") then
 			rememberTool(obj)
-			selectedTool = obj
+			-- Character movement is not itself a selection change.
+			-- Selection is controlled by the slot button.
 			task.defer(updateHotbar)
 		end
 	end)
 
 	character.ChildRemoved:Connect(function(obj)
 		if obj:IsA("Tool") then
-			task.defer(updateHotbar)
+			task.defer(function()
+				if selectedTool == obj and obj.Parent ~= character then
+					-- If it went back to Backpack, keep it selected only when
+					-- it was equipped by the hotbar. Explicit unequip clears it
+					-- before this callback runs.
+					if obj.Parent ~= backpack then
+						selectedTool = nil
+					end
+				end
+				updateHotbar()
+			end)
 		end
 	end)
 
