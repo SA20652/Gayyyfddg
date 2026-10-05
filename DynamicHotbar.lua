@@ -35,7 +35,8 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "ExtendedInventory"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
-gui.DisplayOrder = 50
+gui.DisplayOrder = 1000000
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
 
 -- =========================
@@ -129,6 +130,7 @@ settings.Position = UDim2.new(0.5, 0, 0.5, 0)
 settings.Size = UDim2.new(0, 350, 0, 150)
 settings.BackgroundColor3 = Color3.fromRGB(24, 25, 30)
 settings.BorderSizePixel = 0
+settings.ZIndex = 100
 settings.Parent = gui
 corner(settings, 12)
 stroke(settings, 1.5, Color3.fromRGB(70, 75, 90), 0)
@@ -143,6 +145,7 @@ header.TextColor3 = Color3.fromRGB(245, 245, 250)
 header.TextSize = 18
 header.Font = Enum.Font.GothamBold
 header.TextXAlignment = Enum.TextXAlignment.Left
+header.ZIndex = 101
 header.Parent = settings
 
 local close = Instance.new("TextButton")
@@ -155,6 +158,7 @@ close.Text = "×"
 close.TextColor3 = Color3.fromRGB(230, 230, 235)
 close.TextSize = 26
 close.Font = Enum.Font.GothamBold
+close.ZIndex = 101
 close.Parent = settings
 
 local title = Instance.new("TextLabel")
@@ -166,6 +170,7 @@ title.TextColor3 = Color3.fromRGB(235, 235, 240)
 title.TextSize = 15
 title.Font = Enum.Font.GothamMedium
 title.TextXAlignment = Enum.TextXAlignment.Left
+title.ZIndex = 101
 title.Parent = settings
 
 local toggle = Instance.new("TextButton")
@@ -176,6 +181,7 @@ toggle.Size = UDim2.new(0, 58, 0, 30)
 toggle.BackgroundColor3 = Color3.fromRGB(55, 60, 70)
 toggle.Text = ""
 toggle.AutoButtonColor = false
+toggle.ZIndex = 101
 toggle.Parent = settings
 corner(toggle, 15)
 
@@ -185,6 +191,7 @@ knob.AnchorPoint = Vector2.new(0, 0.5)
 knob.Position = UDim2.new(0, 3, 0.5, 0)
 knob.Size = UDim2.new(0, 24, 0, 24)
 knob.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
+knob.ZIndex = 102
 knob.Parent = toggle
 corner(knob, 12)
 
@@ -197,6 +204,7 @@ credit.TextColor3 = Color3.fromRGB(135, 140, 155)
 credit.TextSize = 12
 credit.Font = Enum.Font.Gotham
 credit.TextXAlignment = Enum.TextXAlignment.Left
+credit.ZIndex = 101
 credit.Parent = settings
 
 -- Collapsed square
@@ -208,6 +216,7 @@ collapsed.Size = UDim2.new(0, 54, 0, 54)
 collapsed.BackgroundColor3 = Color3.fromRGB(24, 25, 30)
 collapsed.BorderSizePixel = 0
 collapsed.Text = "≡"
+collapsed.ZIndex = 100
 collapsed.TextColor3 = Color3.fromRGB(235, 235, 240)
 collapsed.TextSize = 25
 collapsed.Font = Enum.Font.GothamBold
@@ -390,12 +399,9 @@ local function updateHotbar()
 		end
 	end
 
-	for tool in pairs(order) do
-		if not tool:IsDescendantOf(player) then
-			order[tool] = nil
-		end
-	end
-
+	-- Keep the order table intact. Roblox can briefly set a Tool's
+	-- Parent to nil while moving it between Backpack and Character.
+	-- Keeping its original order prevents the selected item from jumping.
 	local tools = getTools()
 	local count = #tools
 
@@ -406,7 +412,7 @@ local function updateHotbar()
 	end
 
 	local visibleCount = math.min(count, 10)
-	local width = math.min(0.135, 0.88 / visibleCount)
+	local width = math.min(0.12, 0.88 / visibleCount)
 
 	for i = 1, visibleCount do
 		local tool = tools[i]
@@ -414,9 +420,9 @@ local function updateHotbar()
 		local slot = Instance.new("ImageButton")
 		slot.Name = "Slot_" .. i
 		slot.LayoutOrder = i
-		slot.Size = UDim2.new(width, 0, 0.92, 0)
-		slot.BackgroundColor3 = Color3.fromRGB(220, 210, 175)
-		slot.BackgroundTransparency = 0.18
+		slot.Size = UDim2.new(width, 0, 0.78, 0)
+		slot.BackgroundColor3 = Color3.fromRGB(128, 128, 128)
+		slot.BackgroundTransparency = 0.30
 		slot.BorderSizePixel = 0
 		slot.AutoButtonColor = true
 		slot.Image = tool.TextureId or ""
@@ -424,11 +430,16 @@ local function updateHotbar()
 		slot.Parent = bar
 		corner(slot, 4)
 
+		local aspect = Instance.new("UIAspectRatioConstraint")
+		aspect.AspectRatio = 1
+		aspect.DominantAxis = Enum.DominantAxis.Width
+		aspect.Parent = slot
+
 		local outlineColor = Color3.fromRGB(70, 75, 85)
 		local outlineWidth = 1
 
 		if tool == selectedTool then
-			outlineColor = Color3.fromRGB(40, 190, 255)
+			outlineColor = Color3.fromRGB(55, 205, 255)
 			outlineWidth = 3
 		end
 
@@ -438,7 +449,7 @@ local function updateHotbar()
 		number.Name = "Number"
 		number.BackgroundTransparency = 1
 		number.Position = UDim2.new(0.04, 0, 0.02, 0)
-		number.Size = UDim2.new(0.25, 0, 0.25, 0)
+		number.Size = UDim2.new(0.20, 0, 0.20, 0)
 		number.Text = tostring(i)
 		number.TextColor3 = Color3.fromRGB(40, 40, 40)
 		number.TextScaled = true
@@ -477,9 +488,14 @@ local function setEnabled(enabled)
 	else
 		toggle.BackgroundColor3 = Color3.fromRGB(55, 60, 70)
 		knob.Position = UDim2.new(0, 3, 0.5, 0)
+		bar.Visible = false
+		setNativeBackpackEnabled(true)
 	end
 
-	updateHotbar()
+	if enabled then
+		setNativeBackpackEnabled(false)
+		updateHotbar()
+	end
 end
 
 toggle:SetAttribute("Enabled", true)
